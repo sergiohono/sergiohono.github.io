@@ -13,7 +13,6 @@
   <style>
     body { font-family: sans-serif; padding: 1rem; background: #121212; color: #eee; }
     h1 { text-align: center; margin-bottom: 1rem; }
-    /* mês com inicial maiúscula */
     .fc-toolbar-title { text-transform: capitalize; }
     #calendar { max-width: 720px; margin: 0 auto; background: #1e1e1e; border-radius: 8px; padding: 1rem; }
     #selected-date { text-align: center; margin-top: 1.5rem; }
@@ -21,39 +20,39 @@
     #slot-list li { margin: .25rem 0; }
     #reserva-container {
       display: none;
-      max-width:600px;
-      margin:2rem auto;
-      background:#2e2e2e;
-      padding:1.5rem;
-      border-radius:8px;
-      color:#f0f0f0;
+      max-width: 600px;
+      margin: 2rem auto;
+      background: #2e2e2e;
+      padding: 1.5rem;
+      border-radius: 8px;
+      color: #f0f0f0;
     }
-    #reserva-container h2 { text-align:center; margin-bottom:0.25rem; }
+    #reserva-container h2 { text-align: center; margin-bottom: .25rem; }
     #reserva-container .reserva-aviso {
-      text-align:center;
-      font-size:0.9rem;
-      font-style:italic;
-      margin-bottom:1rem;
+      text-align: center;
+      font-size: .9rem;
+      font-style: italic;
+      margin-bottom: 1rem;
     }
-    #reserva-form { display:flex; flex-direction:column; gap:0.75rem; }
+    #reserva-form { display: flex; flex-direction: column; gap: .75rem; }
     #reserva-form input, #reserva-form textarea, #reserva-form button {
-      border:none; border-radius:4px; padding:.5rem;
-      background:#444; color:#f0f0f0; font-size:1rem;
+      border: none; border-radius: 4px; padding: .5rem;
+      background: #444; color: #f0f0f0; font-size: 1rem;
     }
     #reserva-form button[type="submit"] {
-      background:#556; color:#fff; cursor:pointer;
+      background: #556; color: #fff; cursor: pointer;
     }
-    .btn-group { display:flex; gap:.5rem; }
+    .btn-group { display: flex; gap: .5rem; }
     .btn-group button {
-      flex:1; background:#555; cursor:pointer; opacity:.6;
+      flex: 1; background: #555; cursor: pointer; opacity: .6;
     }
     .btn-group button.active {
-      opacity:1; background:#789; font-weight:bold;
+      opacity: 1; background: #789; font-weight: bold;
     }
     #r-price, #r-payment {
-      text-align:center; font-weight:bold; margin-top:0.5rem;
+      text-align: center; font-weight: bold; margin-top: .5rem;
     }
-    #reserva-msg { text-align:center; margin-top:1rem; }
+    #reserva-msg { text-align: center; margin-top: 1rem; }
   </style>
 </head>
 <body>
@@ -69,8 +68,8 @@
       *A reserva da data só será confirmada após o pagamento de 50% do valor do show*
     </p>
     <form id="reserva-form">
-      <input type="text" id="r-name"    placeholder="Seu nome" required>
-      <input type="email" id="r-email"  placeholder="Seu e-mail" required>
+      <input type="text" id="r-name" placeholder="Seu nome" required>
+      <input type="email" id="r-email" placeholder="Seu e-mail" required>
 
       <label>Precisará de NF?</label>
       <div class="btn-group">
@@ -80,7 +79,7 @@
       <input type="hidden" id="r-nf" required>
       <p id="r-price"></p>
 
-      <input type="text" id="r-event"    placeholder="Tipo de evento (ex: Casamento)" required>
+      <input type="text" id="r-event" placeholder="Tipo de evento (ex: Casamento)" required>
       <input type="number" id="r-guests" placeholder="Quantas pessoas?" min="1" required>
 
       <label>O evento fornecerá estrutura de som?</label>
@@ -116,7 +115,7 @@
 
   <script>
     // CONFIGURAÇÕES
-    const ICS_URL    =
+    const ICS_URL =
       'https://calendar.google.com/calendar/ical/' +
       '2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/' +
       'public/basic.ics';
@@ -124,7 +123,6 @@
     const GAS_URL    =
       'https://script.google.com/macros/s/AKfycbxkJnt9Nc4hm2T33pYEOngJyl4sMTCDtZlvXMJc2Yu_e9hY37xELBBFc-y8V5WAVp1s/exec';
     const DAYS_AHEAD = 31;
-    // novos horários de início e fim disponíveis
     const AVAIL_START= '08:00';
     const AVAIL_END  = '23:30';
 
@@ -143,7 +141,7 @@
         alert('Não foi possível carregar a agenda.');
       });
 
-    // 2) Parse completo de VEVENTs, incluindo SUMMARY
+    // 2) Parse de VEVENTs com SUMMARY
     function parseICS(txt) {
       const lines = txt.split(/\r?\n/), evs = [];
       let inE = false, s, e, summary;
@@ -171,7 +169,7 @@
       return new Date(Y, M, D, h, m);
     }
 
-    // 3) Calcula espaços livres entre AVAIL_START e AVAIL_END
+    // 3) Calcula slots livres
     function computeFreeSlots(events) {
       const [sh, sm] = AVAIL_START.split(':').map(Number);
       const [eh, em] = AVAIL_END.split(':').map(Number);
@@ -197,7 +195,7 @@
       return free;
     }
 
-    // 4) Inicializa FullCalendar mesclando busyEvents e freeSlots
+    // 4) Inicializa FullCalendar
     function initCalendar() {
       const calendar = new FullCalendar.Calendar(
         document.getElementById('calendar'),
@@ -207,15 +205,17 @@
           headerToolbar: { left:'prev,next today', center:'title', right:'' },
           dateClick: info => renderSlotsForDate(info.date),
           events: [
-            // seus shows agendados
+            // Shows agendados, exibindo apenas a primeira palavra do summary
             ...busyEvents.map(ev => ({
               start: ev.start.toISOString(),
               end:   ev.end.toISOString(),
-              title: ev.summary || 'Agendado',
+              title: ev.summary
+                       ? ev.summary.split(' ')[0]
+                       : 'Agendado',
               backgroundColor: '#d32f2f',
               borderColor:     '#d32f2f'
             })),
-            // slots livres como background
+            // Slots livres
             ...freeSlots.map(slot => ({
               start:   slot.start.toISOString(),
               end:     slot.end.toISOString(),
@@ -233,7 +233,8 @@
       const key   = date.toISOString().slice(0,10);
       const slots = freeSlots.filter(s => s.start.toISOString().slice(0,10) === key);
       document.getElementById('selected-date').textContent =
-        'Horários livres em ' + date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
+        'Horários livres em ' +
+        date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
       const ul = document.getElementById('slot-list');
       ul.innerHTML = '';
       if (!slots.length) {
@@ -248,7 +249,7 @@
           ul.appendChild(li);
         });
       }
-      // prepara e exibe o formulário
+      // prepara formulário
       const title = date.toLocaleDateString('pt-BR',{ day:'2-digit', month:'long' });
       document.getElementById('reserva-title').textContent = `Reserva para ${title}`;
       window._resInfo = {
@@ -257,12 +258,12 @@
         end:   slots[0]?.end  .toTimeString().slice(0,5) || ''
       };
       document.getElementById('r-start').value = _resInfo.start;
-      document.getElementById('r-end'  ).value = _resInfo.end;
+      document.getElementById('r-end').value   = _resInfo.end;
       document.getElementById('r-price').textContent = '';
       document.getElementById('reserva-container').style.display = 'block';
     }
 
-    // 6) Botões Sim/Não e destaque em negrito
+    // 6) Botões Sim/Não e preço dinâmico
     document.querySelectorAll('.nf-btn').forEach(btn => {
       btn.onclick = () => {
         document.getElementById('r-nf').value = btn.dataset.value;
@@ -306,7 +307,7 @@
       document.getElementById('r-price').textContent = txt;
     }
 
-    // 8) Envio do formulário ao Apps Script
+    // 8) Envio do formulário
     document.getElementById('reserva-form').onsubmit = async e => {
       e.preventDefault();
       const f = e.target;
@@ -324,7 +325,7 @@
       try {
         const resp = await fetch(GAS_URL, {
           method: 'POST',
-          headers:{ 'Content-Type':'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const js = await resp.json();
