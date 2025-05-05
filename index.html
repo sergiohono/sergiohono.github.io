@@ -2,96 +2,161 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>Horários Livres</title>
+  <title>Agenda de Horários Livres</title>
+
+  <!-- FullCalendar CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css"
+    rel="stylesheet"
+  />
+
   <style>
     body { font-family: sans-serif; padding: 1rem; }
     h1 { margin-bottom: .5rem; }
-    ul { list-style: none; padding: 0; }
-    li { margin: .25rem 0; }
-    .erro { color: red; }
+    #calendar { max-width: 720px; margin: 0 auto; }
+    #selected-date { margin-top: 1.5rem; }
+    #slot-list { list-style: none; padding: 0; }
+    #slot-list li { margin: .25rem 0; }
   </style>
 </head>
 <body>
-  <h1>Horários Livres nos Próximos 7 Dias</h1>
-  <ul id="lista-livres"></ul>
-  <p id="msg" class="erro" style="display:none;">
-    Não foi possível carregar os horários. Veja o console para detalhes.
-  </p>
+  <h1>Agenda de Horários Livres</h1>
+  <div id="calendar"></div>
+
+  <h2 id="selected-date"></h2>
+  <ul id="slot-list"></ul>
+
+  <!-- FullCalendar core + plugins + locales -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales-all.global.min.js"></script>
 
   <script>
-    const ICS_URL = 
-      'https://calendar.google.com/calendar/ical/' +
+    // configuração do ICS e proxy
+    const ICS_URL = 'https://calendar.google.com/calendar/ical/' +
       '2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/' +
       'public/basic.ics';
-    const PROXY_URL = 'https://api.allorigins.win/raw?url=';
-    const DAYS_AHEAD = 7, START_HOUR = 9, END_HOUR = 22;
+    const PROXY   = 'https://api.allorigins.win/raw?url=';
+    const DAYS_AHEAD = 31;      // mostra o mês inteiro
+    const START_HOUR = 0, END_HOUR = 24;  // full day
 
+    let freeSlots = [];
+
+    // passo 1: baixar e parsear o ICS
+    fetch(PROXY + encodeURIComponent(ICS_URL))
+      .then(r => r.text())
+      .then(txt => {
+        const events = parseEvents(txt);
+        freeSlots = computeFreeSlots(events);
+        initCalendar();
+      })
+      .catch(err => {
+        console.error('Erro ao carregar ICS via proxy:', err);
+        alert('Não foi possível carregar a agenda.');
+      });
+
+    // parse básico de VEVENTs
     function parseEvents(txt) {
-      const lines = txt.split(/\r?\n/), evs = [];
-      let inE=false, s, e;
+      const lines = txt.split(/\r?\n/);
+      const evs = [];
+      let inE = false, s, e;
       for (const l of lines) {
-        if (l==='BEGIN:VEVENT') { inE=true; s=e=null; }
-        if (inE && l.startsWith('DTSTART')) s=parseICSTime(l);
-        if (inE && l.startsWith('DTEND'  )) e=parseICSTime(l);
-        if (l==='END:VEVENT') {
-          if (s&&e) evs.push({start:s,end:e});
-          inE=false;
+        if (l === 'BEGIN:VEVENT')  { inE = true; s = e = null; }
+        if (inE && l.startsWith('DTSTART')) s = parseICSTime(l);
+        if (inE && l.startsWith('DTEND'))   e = parseICSTime(l);
+        if (l === 'END:VEVENT') {
+          if (s && e) evs.push({ start: s, end: e });
+          inE = false;
         }
       }
       return evs;
     }
+
+    // converte linha ICS para Date
     function parseICSTime(line) {
       const part = line.split(':').pop();
-      const Y=+part.substr(0,4), M=+part.substr(4,2)-1,
-            D=+part.substr(6,2), h=+part.substr(9,2),
-            m=+part.substr(11,2);
-      return new Date(Y,M,D,h,m);
+      const Y = +part.substr(0,4),
+            M = +part.substr(4,2)-1,
+            D = +part.substr(6,2),
+            h = +part.substr(9,2),
+            m = +part.substr(11,2);
+      return new Date(Y, M, D, h, m);
     }
+
+    // calcula espaços livres entre START_HOUR e END_HOUR para os próximos DAYS_AHEAD dias
     function computeFreeSlots(events) {
-      events.sort((a,b)=>a.start-b.start);
-      const free = [], today=new Date();
-      for (let i=0;i<DAYS_AHEAD;i++) {
-        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate()+i);
+      events.sort((a,b)=>a.start - b.start);
+      const free = [];
+      const today = new Date();
+      for (let i = 0; i < DAYS_AHEAD; i++) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
         const ds = new Date(day), de = new Date(day);
         ds.setHours(START_HOUR,0,0,0); de.setHours(END_HOUR,0,0,0);
+
+        // pega só busy dentro desse dia
         const busy = events
-          .filter(ev => ev.end>ds && ev.start<de)
+          .filter(ev => ev.end > ds && ev.start < de)
           .map(ev => ({
-            start: ev.start<ds ? ds : ev.start,
-            end:   ev.end>de   ? de : ev.end
+            start: ev.start < ds ? ds : ev.start,
+            end:   ev.end   > de ? de   : ev.end
           }));
+
         let cursor = ds;
         busy.forEach(ev => {
-          if (ev.start>cursor) free.push({start:cursor,end:ev.start});
-          cursor = ev.end>cursor ? ev.end : cursor;
+          if (ev.start > cursor) free.push({ start: cursor, end: ev.start });
+          cursor = ev.end > cursor ? ev.end : cursor;
         });
-        if (cursor<de) free.push({start:cursor,end:de});
+        if (cursor < de) free.push({ start: cursor, end: de });
       }
       return free;
     }
 
-    fetch(PROXY_URL + encodeURIComponent(ICS_URL))
-      .then(r => r.text())
-      .then(txt => {
-        const evs = parseEvents(txt), livres = computeFreeSlots(evs);
-        const ul = document.getElementById('lista-livres');
-        if (livres.length===0) {
-          ul.innerHTML = '<li>Nenhum horário livre encontrado.</li>';
-        } else {
-          livres.forEach(slot => {
-            const li = document.createElement('li');
-            li.textContent = 
-              slot.start.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) +
-              ' – ' +
-              slot.end.toLocaleTimeString('pt-BR',{timeStyle:'short'});
-            ul.appendChild(li);
-          });
-        }
-      })
-      .catch(err => {
-        console.error('Erro ao carregar ICS:', err);
-        document.getElementById('msg').style.display = 'block';
+    // inicializa o FullCalendar
+    function initCalendar() {
+      const calendarEl = document.getElementById('calendar');
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'pt-br',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: ''
+        },
+        dateClick: info => renderSlotsForDate(info.date),
+        // colore os slots livres como background events
+        events: freeSlots.map(slot => ({
+          start: slot.start.toISOString(),
+          end:   slot.end.toISOString(),
+          display: 'background',
+          color: '#aed581'
+        }))
       });
+      calendar.render();
+    }
+
+    // exibe lista de horários livres ao clicar num dia
+    function renderSlotsForDate(date) {
+      const dateKey = date.toISOString().slice(0,10);
+      const slots = freeSlots.filter(slot =>
+        slot.start.toISOString().slice(0,10) === dateKey
+      );
+      document.getElementById('selected-date').textContent =
+        'Horários livres em ' +
+        date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
+      const ul = document.getElementById('slot-list');
+      ul.innerHTML = '';
+      if (!slots.length) {
+        ul.innerHTML = '<li>Nenhum horário livre neste dia.</li>';
+      } else {
+        slots.forEach(s => {
+          const li = document.createElement('li');
+          li.textContent =
+            s.start.toLocaleTimeString('pt-BR',{timeStyle:'short'}) +
+            ' – ' +
+            s.end.toLocaleTimeString('pt-BR',{timeStyle:'short'});
+          ul.appendChild(li);
+        });
+      }
+    }
   </script>
 </body>
 </html>
