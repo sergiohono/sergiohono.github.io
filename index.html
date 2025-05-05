@@ -11,12 +11,30 @@
   />
 
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    h1 { margin-bottom: .5rem; }
-    #calendar { max-width: 720px; margin: 0 auto; }
-    #selected-date { margin-top: 1.5rem; }
-    #slot-list { list-style: none; padding: 0; }
+    body { font-family: sans-serif; padding: 1rem; background: #121212; color: #eee; }
+    h1 { text-align: center; margin-bottom: 1rem; }
+    #calendar { max-width: 720px; margin: 0 auto; background: #1e1e1e; border-radius: 8px; padding: 1rem; }
+    #selected-date { text-align: center; margin-top: 1.5rem; }
+    #slot-list { list-style: none; padding: 0; max-width: 400px; margin: .5rem auto; }
     #slot-list li { margin: .25rem 0; }
+    /* formulário escondido até ser chamado */
+    #reserva-container { display: none; max-width:600px; margin:2rem auto; background:#2e2e2e;
+      padding:1.5rem; border-radius:8px; color:#f0f0f0; }
+    #reserva-container h2 { text-align:center; margin-bottom:1rem; }
+    #reserva-form { display:flex; flex-direction:column; gap:0.75rem; }
+    #reserva-form input, #reserva-form select, #reserva-form button {
+      border: none; border-radius:4px; padding:.5rem;
+      background:#444; color:#f0f0f0; font-size:1rem;
+    }
+    #reserva-form button[type="submit"] {
+      background: #556; color: #fff; cursor: pointer;
+    }
+    .btn-group { display:flex; gap:.5rem; }
+    .btn-group button {
+      flex:1; background:#555; cursor:pointer; opacity:.6;
+    }
+    .btn-group button.active { opacity:1; background:#789;}
+    #reserva-msg { text-align:center; margin-top:1rem; }
   </style>
 </head>
 <body>
@@ -26,22 +44,61 @@
   <h2 id="selected-date"></h2>
   <ul id="slot-list"></ul>
 
+  <div id="reserva-container">
+    <h2 id="reserva-title"></h2>
+    <form id="reserva-form">
+      <input type="text" id="r-name"    placeholder="Seu nome" required>
+      <input type="email" id="r-email"  placeholder="Seu e-mail" required>
+
+      <label>Precisará de NF?</label>
+      <div class="btn-group">
+        <button type="button" class="nf-btn" data-value="Sim">Sim</button>
+        <button type="button" class="nf-btn" data-value="Não">Não</button>
+      </div>
+      <input type="hidden" id="r-nf" required>
+
+      <input type="text" id="r-event" placeholder="Tipo de evento (ex: Casamento)" required>
+      <input type="number" id="r-guests" placeholder="Quantas pessoas?" min="1" required>
+
+      <label>Som próprio?</label>
+      <div class="btn-group">
+        <button type="button" class="sound-btn" data-value="Sim">Sim</button>
+        <button type="button" class="sound-btn" data-value="Não">Não</button>
+      </div>
+      <input type="hidden" id="r-sound" required>
+
+      <input type="text" id="r-location" placeholder="Local do evento" required>
+
+      <div style="display:flex; gap:1rem;">
+        <label style="flex:1;">
+          Início:
+          <input type="time" id="r-start" required>
+        </label>
+        <label style="flex:1;">
+          Término:
+          <input type="time" id="r-end" required>
+        </label>
+      </div>
+
+      <button type="submit">Enviar Reserva</button>
+    </form>
+    <p id="reserva-msg"></p>
+  </div>
+
   <!-- FullCalendar core + plugins + locales -->
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales-all.global.min.js"></script>
 
   <script>
-    // configuração do ICS e proxy
-    const ICS_URL = 'https://calendar.google.com/calendar/ical/' +
-      '2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/' +
-      'public/basic.ics';
-    const PROXY   = 'https://api.allorigins.win/raw?url=';
-    const DAYS_AHEAD = 31;      // mostra o mês inteiro
-    const START_HOUR = 0, END_HOUR = 24;  // full day
+    // CONFIGURAÇÕES
+    const ICS_URL   = 'https://calendar.google.com/calendar/ical/2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/public/basic.ics';
+    const PROXY     = 'https://api.allorigins.win/raw?url=';
+    const GAS_URL   = 'COLE_AQUI_SUA_WEBAPP_URL_DO_GAS'; // substituir pela sua URL do Apps Script
+    const DAYS_AHEAD= 31, START_HOUR = 0, END_HOUR = 24;
 
     let freeSlots = [];
 
-    // passo 1: baixar e parsear o ICS
+    // 1) Baixa e parseia o ICS
     fetch(PROXY + encodeURIComponent(ICS_URL))
       .then(r => r.text())
       .then(txt => {
@@ -54,100 +111,87 @@
         alert('Não foi possível carregar a agenda.');
       });
 
-    // parse básico de VEVENTs
+    // 2) Funções de parsing
     function parseEvents(txt) {
-      const lines = txt.split(/\r?\n/);
-      const evs = [];
-      let inE = false, s, e;
+      const lines = txt.split(/\r?\n/), evs = [];
+      let inE=false, s, e;
       for (const l of lines) {
-        if (l === 'BEGIN:VEVENT')  { inE = true; s = e = null; }
+        if (l==='BEGIN:VEVENT') { inE=true; s=e=null; }
         if (inE && l.startsWith('DTSTART')) s = parseICSTime(l);
         if (inE && l.startsWith('DTEND'))   e = parseICSTime(l);
-        if (l === 'END:VEVENT') {
-          if (s && e) evs.push({ start: s, end: e });
+        if (l==='END:VEVENT') {
+          if (s && e) evs.push({ start:s, end:e });
           inE = false;
         }
       }
       return evs;
     }
-
-    // converte linha ICS para Date
     function parseICSTime(line) {
       const part = line.split(':').pop();
-      const Y = +part.substr(0,4),
-            M = +part.substr(4,2)-1,
-            D = +part.substr(6,2),
-            h = +part.substr(9,2),
-            m = +part.substr(11,2);
-      return new Date(Y, M, D, h, m);
+      const Y=+part.substr(0,4), M=+part.substr(4,2)-1,
+            D=+part.substr(6,2), h=+part.substr(9,2),
+            m=+part.substr(11,2);
+      return new Date(Y,M,D,h,m);
     }
 
-    // calcula espaços livres entre START_HOUR e END_HOUR para os próximos DAYS_AHEAD dias
+    // 3) Calcula espaços livres
     function computeFreeSlots(events) {
-      events.sort((a,b)=>a.start - b.start);
-      const free = [];
-      const today = new Date();
-      for (let i = 0; i < DAYS_AHEAD; i++) {
-        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-        const ds = new Date(day), de = new Date(day);
+      events.sort((a,b)=>a.start-b.start);
+      const free = [], today=new Date();
+      for (let i=0;i<DAYS_AHEAD;i++) {
+        const day = new Date(today.getFullYear(),today.getMonth(),today.getDate()+i);
+        const ds=new Date(day), de=new Date(day);
         ds.setHours(START_HOUR,0,0,0); de.setHours(END_HOUR,0,0,0);
-
-        // pega só busy dentro desse dia
         const busy = events
-          .filter(ev => ev.end > ds && ev.start < de)
-          .map(ev => ({
-            start: ev.start < ds ? ds : ev.start,
-            end:   ev.end   > de ? de   : ev.end
+          .filter(ev=>ev.end>ds && ev.start<de)
+          .map(ev=>({
+            start: ev.start<ds?ds:ev.start,
+            end:   ev.end>de?de:ev.end
           }));
-
         let cursor = ds;
-        busy.forEach(ev => {
-          if (ev.start > cursor) free.push({ start: cursor, end: ev.start });
-          cursor = ev.end > cursor ? ev.end : cursor;
+        busy.forEach(ev=>{
+          if(ev.start>cursor) free.push({start:cursor,end:ev.start});
+          cursor = ev.end>cursor?ev.end:cursor;
         });
-        if (cursor < de) free.push({ start: cursor, end: de });
+        if(cursor<de) free.push({start:cursor,end:de});
       }
       return free;
     }
 
-    // inicializa o FullCalendar
+    // 4) Inicializa o calendário
     function initCalendar() {
       const calendarEl = document.getElementById('calendar');
       const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'pt-br',
-        headerToolbar: {
-          left: 'prev,next today',
-          center: 'title',
-          right: ''
-        },
+        headerToolbar: { left:'prev,next today', center:'title', right:'' },
         dateClick: info => renderSlotsForDate(info.date),
-        // colore os slots livres como background events
-        events: freeSlots.map(slot => ({
+        events: freeSlots.map(slot=>({
           start: slot.start.toISOString(),
           end:   slot.end.toISOString(),
-          display: 'background',
-          color: '#aed581'
+          display:'background',
+          color:'#558b2f'
         }))
       });
       calendar.render();
     }
 
-    // exibe lista de horários livres ao clicar num dia
+    // 5) Renderiza slots e exibe formulário
     function renderSlotsForDate(date) {
       const dateKey = date.toISOString().slice(0,10);
-      const slots = freeSlots.filter(slot =>
+      const slots = freeSlots.filter(slot=>
         slot.start.toISOString().slice(0,10) === dateKey
       );
       document.getElementById('selected-date').textContent =
         'Horários livres em ' +
         date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
+
       const ul = document.getElementById('slot-list');
       ul.innerHTML = '';
       if (!slots.length) {
         ul.innerHTML = '<li>Nenhum horário livre neste dia.</li>';
       } else {
-        slots.forEach(s => {
+        slots.forEach(s=>{
           const li = document.createElement('li');
           li.textContent =
             s.start.toLocaleTimeString('pt-BR',{timeStyle:'short'}) +
@@ -156,7 +200,76 @@
           ul.appendChild(li);
         });
       }
+
+      // exibe o form
+      const title = date.toLocaleDateString('pt-BR',{ day:'2-digit', month:'long' });
+      document.getElementById('reserva-title').textContent = `Reserva para ${title}`;
+      window._reserva_info = {
+        date: dateKey,
+        start: slots[0]?.start.toTimeString().slice(0,5) || '',
+        end:   slots[0]?.end  .toTimeString().slice(0,5) || ''
+      };
+      document.getElementById('r-start').value = window._reserva_info.start;
+      document.getElementById('r-end'  ).value = window._reserva_info.end;
+      document.getElementById('reserva-container').style.display = 'block';
     }
+
+    // 6) Botões Sim/Não
+    document.querySelectorAll('.nf-btn').forEach(btn=>{
+      btn.onclick = ()=> {
+        document.getElementById('r-nf').value = btn.dataset.value;
+        document.querySelectorAll('.nf-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+      };
+    });
+    document.querySelectorAll('.sound-btn').forEach(btn=>{
+      btn.onclick = ()=> {
+        document.getElementById('r-sound').value = btn.dataset.value;
+        document.querySelectorAll('.sound-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+      };
+    });
+
+    // 7) Sincroniza horário escolhido
+    ['r-start','r-end'].forEach(id=>{
+      document.getElementById(id).addEventListener('change', e=>{
+        window._reserva_info[id.slice(2)] = e.target.value;
+      });
+    });
+
+    // 8) Envio do formulário
+    document.getElementById('reserva-form').onsubmit = async e => {
+      e.preventDefault();
+      const form = e.target;
+      const payload = {
+        ...window._reserva_info,
+        name:      form.querySelector('#r-name').value,
+        email:     form.querySelector('#r-email').value,
+        nf:        form.querySelector('#r-nf').value,
+        eventType: form.querySelector('#r-event').value,
+        guests:    form.querySelector('#r-guests').value,
+        sound:     form.querySelector('#r-sound').value,
+        location:  form.querySelector('#r-location').value
+      };
+      try {
+        const resp = await fetch(GAS_URL, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const js = await resp.json();
+        if (js.ok) {
+          document.getElementById('reserva-msg').textContent =
+            'Reserva enviada com sucesso! Você receberá confirmação por e-mail.';
+          form.reset();
+        } else {
+          throw new Error(js.error || 'Erro desconhecido');
+        }
+      } catch(err) {
+        document.getElementById('reserva-msg').textContent =
+          'Falha ao enviar: '+err.message;
+      }
+    };
   </script>
 </body>
 </html>
