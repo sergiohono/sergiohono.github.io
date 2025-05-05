@@ -104,6 +104,7 @@
 
       <p id="r-payment">Forma de Pagamento: Pix - sergiohono@gmail.com</p>
       <textarea id="r-observations" placeholder="Observações extras" rows="3"></textarea>
+
       <button type="submit">Enviar Reserva</button>
     </form>
     <p id="reserva-msg"></p>
@@ -205,13 +206,11 @@
           headerToolbar: { left:'prev,next today', center:'title', right:'' },
           dateClick: info => renderSlotsForDate(info.date),
           events: [
-            // Shows agendados, exibindo apenas a primeira palavra do summary
+            // Eventos ocupados: apenas primeira palavra do resumo
             ...busyEvents.map(ev => ({
               start: ev.start.toISOString(),
               end:   ev.end.toISOString(),
-              title: ev.summary
-                       ? ev.summary.split(' ')[0]
-                       : 'Agendado',
+              title: ev.summary ? ev.summary.split(' ')[0] : 'Agendado',
               backgroundColor: '#d32f2f',
               borderColor:     '#d32f2f'
             })),
@@ -233,8 +232,7 @@
       const key   = date.toISOString().slice(0,10);
       const slots = freeSlots.filter(s => s.start.toISOString().slice(0,10) === key);
       document.getElementById('selected-date').textContent =
-        'Horários livres em ' +
-        date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
+        'Horários livres em ' + date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
       const ul = document.getElementById('slot-list');
       ul.innerHTML = '';
       if (!slots.length) {
