@@ -13,7 +13,7 @@
   <style>
     body { font-family: sans-serif; padding: 1rem; background: #121212; color: #eee; }
     h1 { text-align: center; margin-bottom: 1rem; }
-    /* força inicial maiúscula no título do mês */
+    /* mês com inicial maiúscula */
     .fc-toolbar-title { text-transform: capitalize; }
     #calendar { max-width: 720px; margin: 0 auto; background: #1e1e1e; border-radius: 8px; padding: 1rem; }
     #selected-date { text-align: center; margin-top: 1.5rem; }
@@ -83,8 +83,6 @@
 
       <p id="r-price"></p>
 
-      <label>Preço</label> <!-- rótulo opcional -->
-      
       <input type="text" id="r-event" placeholder="Tipo de evento (ex: Casamento)" required>
       <input type="number" id="r-guests" placeholder="Quantas pessoas?" min="1" required>
 
@@ -123,10 +121,12 @@
 
   <script>
     // CONFIGURAÇÕES
-    const ICS_URL = 'https://calendar.google.com/calendar/ical/2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/public/basic.ics';
-/public/basic.ics';
+    const ICS_URL = 
+      'https://calendar.google.com/calendar/ical/' +
+      '2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/' +
+      'public/basic.ics';
     const PROXY      = 'https://api.allorigins.win/raw?url=';
-    const GAS_URL    = 'COLE_AQUI_SUA_WEBAPP_URL_DO_GAS';
+    const GAS_URL    = 'https://script.google.com/macros/s/AKfycbxkJnt9Nc4hm2T33pYEOngJyl4sMTCDtZlvXMJc2Yu_e9hY37xELBBFc-y8V5WAVp1s/exec';
     const DAYS_AHEAD = 31;
     const AVAIL_START= '14:30';
     const AVAIL_END  = '23:59';
@@ -151,17 +151,17 @@
       const lines = txt.split(/\r?\n/), evs=[];
       let inE=false, s,e;
       for(const l of lines){
-        if(l==='BEGIN:VEVENT'){inE=true; s=e=null;}
+        if(l==='BEGIN:VEVENT'){ inE=true; s=e=null; }
         if(inE && l.startsWith('DTSTART')) s=parseICSTime(l);
         if(inE && l.startsWith('DTEND'))   e=parseICSTime(l);
-        if(l==='END:VEVENT'){ if(s&&e) evs.push({start:s,end:e}); inE=false;}
+        if(l==='END:VEVENT'){ if(s&&e) evs.push({start:s,end:e}); inE=false; }
       }
       return evs;
     }
     function parseICSTime(line){
       const part=line.split(':').pop();
-      const Y=+part.substr(0,4),M=+part.substr(4,2)-1,
-            D=+part.substr(6,2),h=+part.substr(9,2),
+      const Y=+part.substr(0,4), M=+part.substr(4,2)-1,
+            D=+part.substr(6,2), h=+part.substr(9,2),
             m=+part.substr(11,2);
       return new Date(Y,M,D,h,m);
     }
@@ -213,7 +213,7 @@
     // mostra slots e form
     function renderSlotsForDate(date){
       const key=date.toISOString().slice(0,10);
-      const slots=freeSlots.filter(s=> s.start.toISOString().slice(0,10)===key );
+      const slots=freeSlots.filter(s=>s.start.toISOString().slice(0,10)===key);
       document.getElementById('selected-date').textContent=
         'Horários livres em '+date.toLocaleDateString('pt-BR',{dateStyle:'full'});
       const ul=document.getElementById('slot-list');
@@ -280,7 +280,7 @@
       document.getElementById('r-price').textContent=txt;
     }
 
-    // botões sound apenas destaque (price não depende)
+    // botões sound
     document.querySelectorAll('.sound-btn').forEach(btn=>{
       btn.onclick=()=>{
         document.getElementById('r-sound').value=btn.dataset.value;
@@ -289,7 +289,7 @@
       };
     });
 
-    // envio do form
+    // envio de formulário
     document.getElementById('reserva-form').onsubmit=async e=>{
       e.preventDefault();
       const f=e.target;
