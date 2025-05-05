@@ -73,7 +73,7 @@
       return free;
     }
 
-    fetch(ICS_URL)
+    fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(ICS_URL))
       .then(r => r.text())
       .then(txt => {
         const evs = parseEvents(txt);
