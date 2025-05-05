@@ -15,14 +15,13 @@
     h1 { text-align: center; margin-bottom: 1rem; }
     #calendar { max-width: 720px; margin: 0 auto; background: #1e1e1e; border-radius: 8px; padding: 1rem; }
     #selected-date { text-align: center; margin-top: 1.5rem; }
-    #slot-list { list-style: none; padding: 0; max-width: 400px; margin: .5rem auto; }
+    #slot-list { list-style: none; padding: 0; max-width: 400px; margin: .5rem auto; text-align: center; }
     #slot-list li { margin: .25rem 0; }
-    /* formulário escondido até ser chamado */
     #reserva-container { display: none; max-width:600px; margin:2rem auto; background:#2e2e2e;
       padding:1.5rem; border-radius:8px; color:#f0f0f0; }
     #reserva-container h2 { text-align:center; margin-bottom:1rem; }
     #reserva-form { display:flex; flex-direction:column; gap:0.75rem; }
-    #reserva-form input, #reserva-form select, #reserva-form button {
+    #reserva-form input, #reserva-form button {
       border: none; border-radius:4px; padding:.5rem;
       background:#444; color:#f0f0f0; font-size:1rem;
     }
@@ -33,7 +32,9 @@
     .btn-group button {
       flex:1; background:#555; cursor:pointer; opacity:.6;
     }
-    .btn-group button.active { opacity:1; background:#789;}
+    .btn-group button.active {
+      opacity:1; background:#789; font-weight: bold;
+    }
     #reserva-msg { text-align:center; margin-top:1rem; }
   </style>
 </head>
@@ -60,7 +61,7 @@
       <input type="text" id="r-event" placeholder="Tipo de evento (ex: Casamento)" required>
       <input type="number" id="r-guests" placeholder="Quantas pessoas?" min="1" required>
 
-      <label>Som próprio?</label>
+      <label>O evento fornecerá estrutura de som?</label>
       <div class="btn-group">
         <button type="button" class="sound-btn" data-value="Sim">Sim</button>
         <button type="button" class="sound-btn" data-value="Não">Não</button>
@@ -90,15 +91,17 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales-all.global.min.js"></script>
 
   <script>
-    // CONFIGURAÇÕES
-    const ICS_URL   = 'https://calendar.google.com/calendar/ical/2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/public/basic.ics';
-    const PROXY     = 'https://api.allorigins.win/raw?url=';
-    const GAS_URL   = 'COLE_AQUI_SUA_WEBAPP_URL_DO_GAS'; // substituir pela sua URL do Apps Script
-    const DAYS_AHEAD= 31, START_HOUR = 0, END_HOUR = 24;
+    // CONFIGURAÇÃO DE HORÁRIOS
+    const ICS_URL    = 'https://calendar.google.com/calendar/ical/2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/public/basic.ics';
+    const PROXY      = 'https://api.allorigins.win/raw?url=';
+    const GAS_URL    = 'COLE_AQUI_SUA_WEBAPP_URL_DO_GAS';
+    const DAYS_AHEAD = 31;
+    const AVAIL_START= '14:30';
+    const AVAIL_END  = '23:59';
 
     let freeSlots = [];
 
-    // 1) Baixa e parseia o ICS
+    // 1) Busca e parseia ICS via proxy
     fetch(PROXY + encodeURIComponent(ICS_URL))
       .then(r => r.text())
       .then(txt => {
@@ -111,7 +114,7 @@
         alert('Não foi possível carregar a agenda.');
       });
 
-    // 2) Funções de parsing
+    // 2) Parsing de VEVENT
     function parseEvents(txt) {
       const lines = txt.split(/\r?\n/), evs = [];
       let inE=false, s, e;
@@ -134,31 +137,37 @@
       return new Date(Y,M,D,h,m);
     }
 
-    // 3) Calcula espaços livres
+    // 3) Calcula espaços livres entre AVAIL_START e AVAIL_END
     function computeFreeSlots(events) {
-      events.sort((a,b)=>a.start-b.start);
+      const [sh, sm] = AVAIL_START.split(':').map(Number);
+      const [eh, em] = AVAIL_END.split(':').map(Number);
+      events.sort((a,b) => a.start - b.start);
       const free = [], today=new Date();
-      for (let i=0;i<DAYS_AHEAD;i++) {
-        const day = new Date(today.getFullYear(),today.getMonth(),today.getDate()+i);
-        const ds=new Date(day), de=new Date(day);
-        ds.setHours(START_HOUR,0,0,0); de.setHours(END_HOUR,0,0,0);
+
+      for (let i=0; i<DAYS_AHEAD; i++) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate()+i);
+        const ds = new Date(day), de = new Date(day);
+        ds.setHours(sh, sm, 0, 0);
+        de.setHours(eh, em, 0, 0);
+
         const busy = events
-          .filter(ev=>ev.end>ds && ev.start<de)
-          .map(ev=>({
-            start: ev.start<ds?ds:ev.start,
-            end:   ev.end>de?de:ev.end
+          .filter(ev => ev.end > ds && ev.start < de)
+          .map(ev => ({
+            start: ev.start < ds ? ds : ev.start,
+            end:   ev.end   > de ? de   : ev.end
           }));
+
         let cursor = ds;
-        busy.forEach(ev=>{
-          if(ev.start>cursor) free.push({start:cursor,end:ev.start});
-          cursor = ev.end>cursor?ev.end:cursor;
+        busy.forEach(ev => {
+          if (ev.start > cursor) free.push({ start: cursor, end: ev.start });
+          cursor = ev.end > cursor ? ev.end : cursor;
         });
-        if(cursor<de) free.push({start:cursor,end:de});
+        if (cursor < de) free.push({ start: cursor, end: de });
       }
       return free;
     }
 
-    // 4) Inicializa o calendário
+    // 4) Inicializa FullCalendar
     function initCalendar() {
       const calendarEl = document.getElementById('calendar');
       const calendar = new FullCalendar.Calendar(calendarEl, {
@@ -166,7 +175,7 @@
         locale: 'pt-br',
         headerToolbar: { left:'prev,next today', center:'title', right:'' },
         dateClick: info => renderSlotsForDate(info.date),
-        events: freeSlots.map(slot=>({
+        events: freeSlots.map(slot => ({
           start: slot.start.toISOString(),
           end:   slot.end.toISOString(),
           display:'background',
@@ -179,9 +188,10 @@
     // 5) Renderiza slots e exibe formulário
     function renderSlotsForDate(date) {
       const dateKey = date.toISOString().slice(0,10);
-      const slots = freeSlots.filter(slot=>
-        slot.start.toISOString().slice(0,10) === dateKey
+      const slots = freeSlots.filter(s =>
+        s.start.toISOString().slice(0,10) === dateKey
       );
+
       document.getElementById('selected-date').textContent =
         'Horários livres em ' +
         date.toLocaleDateString('pt-BR',{ dateStyle:'full' });
@@ -191,7 +201,7 @@
       if (!slots.length) {
         ul.innerHTML = '<li>Nenhum horário livre neste dia.</li>';
       } else {
-        slots.forEach(s=>{
+        slots.forEach(s => {
           const li = document.createElement('li');
           li.textContent =
             s.start.toLocaleTimeString('pt-BR',{timeStyle:'short'}) +
@@ -201,7 +211,7 @@
         });
       }
 
-      // exibe o form
+      // prepara e exibe o formulário
       const title = date.toLocaleDateString('pt-BR',{ day:'2-digit', month:'long' });
       document.getElementById('reserva-title').textContent = `Reserva para ${title}`;
       window._reserva_info = {
@@ -210,34 +220,34 @@
         end:   slots[0]?.end  .toTimeString().slice(0,5) || ''
       };
       document.getElementById('r-start').value = window._reserva_info.start;
-      document.getElementById('r-end'  ).value = window._reserva_info.end;
+      document.getElementById('r-end').value   = window._reserva_info.end;
       document.getElementById('reserva-container').style.display = 'block';
     }
 
-    // 6) Botões Sim/Não
-    document.querySelectorAll('.nf-btn').forEach(btn=>{
-      btn.onclick = ()=> {
+    // 6) Botões Sim/Não com destaque em negrito
+    document.querySelectorAll('.nf-btn').forEach(btn => {
+      btn.onclick = () => {
         document.getElementById('r-nf').value = btn.dataset.value;
-        document.querySelectorAll('.nf-btn').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.nf-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
       };
     });
-    document.querySelectorAll('.sound-btn').forEach(btn=>{
-      btn.onclick = ()=> {
+    document.querySelectorAll('.sound-btn').forEach(btn => {
+      btn.onclick = () => {
         document.getElementById('r-sound').value = btn.dataset.value;
-        document.querySelectorAll('.sound-btn').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.sound-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
       };
     });
 
-    // 7) Sincroniza horário escolhido
-    ['r-start','r-end'].forEach(id=>{
-      document.getElementById(id).addEventListener('change', e=>{
+    // 7) Sincroniza horários escolhidos
+    ['r-start','r-end'].forEach(id => {
+      document.getElementById(id).addEventListener('change', e => {
         window._reserva_info[id.slice(2)] = e.target.value;
       });
     });
 
-    // 8) Envio do formulário
+    // 8) Envio do formulário ao Google Apps Script
     document.getElementById('reserva-form').onsubmit = async e => {
       e.preventDefault();
       const form = e.target;
@@ -253,9 +263,9 @@
       };
       try {
         const resp = await fetch(GAS_URL, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify(payload)
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:     JSON.stringify(payload)
         });
         const js = await resp.json();
         if (js.ok) {
@@ -267,7 +277,7 @@
         }
       } catch(err) {
         document.getElementById('reserva-msg').textContent =
-          'Falha ao enviar: '+err.message;
+          'Falha ao enviar: ' + err.message;
       }
     };
   </script>
