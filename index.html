@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Horários Livres</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    h1 { margin-bottom: .5rem; }
+    ul { list-style: none; padding: 0; }
+    li { margin: .25rem 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Horários Livres nos Próximos 7 Dias</h1>
+  <ul id="lista-livres"></ul>
+
+  <script>
+    // === CONFIGURAÇÕES ===
+    const ICS_URL = 'https://calendar.google.com/calendar/ical/2c5a92869999fb7b7cacc691a09414de427c5926f2db01ec6e427bd6eb8e6a9d%40group.calendar.google.com/public/basic.ics';
+    const DAYS_AHEAD = 7;
+    const START_HOUR = 9;
+    const END_HOUR = 22;
+    // =====================
+
+    function parseEvents(icsText) {
+      const lines = icsText.split(/\r?\n/);
+      const events = [];
+      let inEvent = false, dtStart = null, dtEnd = null;
+      lines.forEach(l => {
+        if (l === 'BEGIN:VEVENT') { inEvent = true; dtStart = dtEnd = null; }
+        if (inEvent && l.startsWith('DTSTART')) dtStart = parseICSTime(l);
+        if (inEvent && l.startsWith('DTEND'))   dtEnd   = parseICSTime(l);
+        if (l === 'END:VEVENT') {
+          if (dtStart && dtEnd) events.push({ start: dtStart, end: dtEnd });
+          inEvent = false;
+        }
+      });
+      return events;
+    }
+
+    function parseICSTime(line) {
+      const part = line.split(':').pop();
+      const Y = +part.substr(0,4),
+            M = +part.substr(4,2)-1,
+            D = +part.substr(6,2),
+            h = +part.substr(9,2),
+            m = +part.substr(11,2);
+      return new Date(Y, M, D, h, m);
+    }
+
+    function computeFreeSlots(events) {
+      events.sort((a,b) => a.start - b.start);
+      const free = [];
+      const today = new Date();
+      for (let i = 0; i < DAYS_AHEAD; i++) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate()+i);
+        const dayStart = new Date(day); dayStart.setHours(START_HOUR,0,0,0);
+        const dayEnd   = new Date(day); dayEnd.setHours(END_HOUR,  0,0,0);
+        const busy = events
+          .filter(e => e.end > dayStart && e.start < dayEnd)
+          .map(e => ({
+            start: e.start < dayStart ? dayStart : e.start,
+            end:   e.end   > dayEnd   ? dayEnd   : e.end
+          }));
+        let cursor = dayStart;
+        busy.forEach(ev => {
+          if (ev.start > cursor) free.push({start: cursor, end: ev.start});
+          cursor = ev.end > cursor ? ev.end : cursor;
+        });
+        if (cursor < dayEnd) free.push({start: cursor, end: dayEnd});
+      }
+      return free;
+    }
+
+    fetch(ICS_URL)
+      .then(r => r.text())
+      .then(txt => {
+        const evs = parseEvents(txt);
+        const livres = computeFreeSlots(evs);
+        const ul = document.getElementById('lista-livres');
+        livres.forEach(slot => {
+          const li = document.createElement('li');
+          li.textContent = slot.start.toLocaleString('pt-BR', {
+            dateStyle: 'short',
+            timeStyle: 'short'
+          })
+          + ' – ' +
+          slot.end.toLocaleTimeString('pt-BR',{timeStyle:'short'});
+          ul.appendChild(li);
+        });
+      })
+      .catch(console.error);
+  </script>
+</body>
+</html>
