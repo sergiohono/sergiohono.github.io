@@ -129,8 +129,9 @@
 
     let busyEvents = [], freeSlots = [];
 
-    // 1) Baixa e parseia o ICS
-    fetch(PROXY + encodeURIComponent(ICS_URL))
+    // 1) Baixa e parseia o ICS sempre fresco
+    const icsNoCache = ICS_URL + '?cachebust=' + Date.now();
+    fetch(PROXY + encodeURIComponent(icsNoCache))
       .then(r => r.text())
       .then(txt => {
         busyEvents = parseICS(txt);
@@ -206,7 +207,7 @@
           headerToolbar: { left:'prev,next today', center:'title', right:'' },
           dateClick: info => renderSlotsForDate(info.date),
           events: [
-            // Eventos ocupados: apenas primeira palavra do resumo
+            // Ocupados: só primeira palavra do summary
             ...busyEvents.map(ev => ({
               start: ev.start.toISOString(),
               end:   ev.end.toISOString(),
@@ -247,7 +248,6 @@
           ul.appendChild(li);
         });
       }
-      // prepara formulário
       const title = date.toLocaleDateString('pt-BR',{ day:'2-digit', month:'long' });
       document.getElementById('reserva-title').textContent = `Reserva para ${title}`;
       window._resInfo = {
@@ -261,7 +261,7 @@
       document.getElementById('reserva-container').style.display = 'block';
     }
 
-    // 6) Botões Sim/Não e preço dinâmico
+    // 6) Botões Sim/Não e preço
     document.querySelectorAll('.nf-btn').forEach(btn => {
       btn.onclick = () => {
         document.getElementById('r-nf').value = btn.dataset.value;
@@ -284,7 +284,7 @@
       });
     });
 
-    // 7) Calcula e exibe preço
+    // 7) Calcula preço
     function updatePrice() {
       const { start, end } = window._resInfo;
       if (!start || !end) return;
@@ -305,8 +305,8 @@
       document.getElementById('r-price').textContent = txt;
     }
 
-    // 8) Envio do formulário
-    document.getElementById('reserva-form').onsubmit = async e => {
+    // 8) Envio do formulário (no-cors)
+    document.getElementById('reserva-form').onsubmit = e => {
       e.preventDefault();
       const f = e.target;
       const payload = {
@@ -320,24 +320,21 @@
         location:     f.querySelector('#r-location').value,
         observations: f.querySelector('#r-observations').value
       };
-      try {
-        const resp = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const js = await resp.json();
-        if (js.ok) {
-          document.getElementById('reserva-msg').textContent =
-            'Reserva enviada com sucesso! Você receberá confirmação por e-mail.';
-          f.reset();
-        } else {
-          throw new Error(js.error || 'Erro desconhecido');
-        }
-      } catch(err) {
+      fetch(GAS_URL, {
+        method:  'POST',
+        mode:    'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload)
+      })
+      .then(() => {
+        document.getElementById('reserva-msg').textContent =
+          'Reserva enviada com sucesso! Você receberá confirmação por e-mail.';
+        f.reset();
+      })
+      .catch(err => {
         document.getElementById('reserva-msg').textContent =
           'Falha ao enviar: ' + err.message;
-      }
+      });
     };
   </script>
 </body>
